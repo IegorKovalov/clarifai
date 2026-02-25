@@ -8,6 +8,17 @@ class Settings(BaseSettings):
     
     # OpenAI
     openai_api_key: str
+
+    # Anthropic
+    anthropic_api_key: str
+
+    # Email
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+
     
     # LangSmith (for Phase 3, defined now so it's ready)
     langchain_api_key: str = ""

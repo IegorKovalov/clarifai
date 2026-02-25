@@ -80,23 +80,20 @@ async def search_similar(
     logger.info(f"Searching embeddings for tenant {tenant_id}")
 
     query_vector = await embed_text(query)
+    query_vector_str = "[" + ",".join(map(str, query_vector)) + "]"
+
 
     # pgvector cosine similarity search — <=> is the cosine distance operator
     # Lower distance = more similar, so we ORDER BY ASC
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT content, chunk_index, document_id,
-                   1 - (vector <=> :query_vector::vector) AS similarity
+                1 - (vector <=> '{query_vector_str}'::vector) AS similarity
             FROM embeddings
-            WHERE tenant_id = :tenant_id
-            ORDER BY vector <=> :query_vector::vector
-            LIMIT :limit
-        """),
-        {
-            "query_vector": str(query_vector),
-            "tenant_id": str(tenant_id),
-            "limit": limit,
-        }
+            WHERE tenant_id = '{str(tenant_id)}'::uuid
+            ORDER BY vector <=> '{query_vector_str}'::vector
+            LIMIT {limit}
+        """)
     )
 
     rows = result.fetchall()
