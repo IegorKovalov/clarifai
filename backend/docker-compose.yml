@@ -1,0 +1,19 @@
+name: clarif-ai
+
+version: "3.8"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: clarifai_postgres
+    environment:
+      POSTGRES_USER: clarifai
+      POSTGRES_PASSWORD: clarifai123
+      POSTGRES_DB: clarifai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
