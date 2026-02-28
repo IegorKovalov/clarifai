@@ -20,16 +20,6 @@ MAX_REWRITES = 2
 # --- Conditional edge functions ---
 # These look at the state and return the name of the next node
 
-def route_decision(state: ClarifAIState) -> str:
-    """After router node — where do we go?"""
-    decision = state.get("decision", "vectorstore")
-    if decision == "off_topic":
-        return "off_topic"
-    elif decision == "escalate":
-        return "escalate"
-    else:
-        return "retrieve"
-
 
 def grade_documents_decision(state: ClarifAIState) -> str:
     """After grading documents — do we have relevant chunks?"""
@@ -110,17 +100,6 @@ def build_graph() -> StateGraph:
 
     # Entry point
     graph.set_entry_point("router")
-
-    # Conditional edge after router
-    graph.add_conditional_edges(
-        "router",
-        route_decision,
-        {
-            "retrieve": "retrieve",
-            "escalate": "escalate",
-            "off_topic": "off_topic",
-        }
-    )
 
     # Regular edges
     graph.add_edge("retrieve", "grade_documents")

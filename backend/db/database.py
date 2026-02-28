@@ -8,7 +8,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Async engine — used by FastAPI at runtime
-engine = create_async_engine(DATABASE_URL, echo=True)
+engine = create_async_engine(DATABASE_URL, echo=False)
 
 # Session factory — creates individual DB sessions per request
 AsyncSessionLocal = sessionmaker(

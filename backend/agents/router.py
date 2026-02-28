@@ -1,15 +1,17 @@
 import logging
+from typing import Literal
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 from config import settings
 from graph.state import ClarifAIState
 
 logger = logging.getLogger(__name__)
 
-# Structured output schema — forces Claude to respond with exactly one of three values
+# Structured output schema — Literal constraint ensures only valid values are returned
 class RouteDecision(BaseModel):
-    decision: str = Field(
+    decision: Literal["vectorstore", "escalate", "off_topic"] = Field(
         description="Route the question to one of: 'vectorstore', 'escalate', 'off_topic'"
     )
 
@@ -26,15 +28,22 @@ structured_llm = llm.with_structured_output(RouteDecision)
 # The routing prompt
 router_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a router for a customer support AI system.
-    
+
 Your job is to classify the customer's question into exactly one of three categories:
 
-- 'vectorstore': The question is about the company's products, services, policies, or anything 
-  the knowledge base might answer. Default to this when unsure.
-- 'escalate': The question involves a complaint, legal threat, urgent issue, or the customer 
-  explicitly asks for a human agent.
-- 'off_topic': The question is completely unrelated to customer support 
-  (e.g. asking about the weather, general knowledge questions).
+- 'vectorstore': Use this for any question about business, finance, entrepreneurship, products, 
+  services, policies, or any topic a company's knowledge base might plausibly cover. Also use 
+  this for vague or follow-up questions like "tell me more" or "can you explain?". 
+  When in doubt, default to this.
+
+- 'escalate': Use this ONLY when the customer explicitly asks for a human/agent, makes a legal 
+  threat, or expresses urgent distress. Examples: "I want to speak to a human", 
+  "I'm going to sue you", "get me a manager".
+
+- 'off_topic': Use this ONLY for questions with ZERO possible business relevance — pure 
+  geography facts, weather, sports scores, entertainment trivia, or science unrelated to any 
+  business topic. Examples: "What is the capital of France?", "Who won the World Cup?", 
+  "What is the boiling point of water?".
 
 Respond with only the decision field filled in."""),
     ("human", "Customer question: {question}")
@@ -44,18 +53,17 @@ Respond with only the decision field filled in."""),
 router_chain = router_prompt | structured_llm
 
 
-async def route_question(state: ClarifAIState) -> dict:
+async def route_question(state: ClarifAIState) -> Command[Literal["retrieve", "escalate", "off_topic"]]:
     """
-    Node function — receives state, returns updated state.
-    Decides where to route the customer's question.
+    Node function — uses Command to directly specify the next node,
+    bypassing the need to store the decision in state.
     """
     logger.info(f"Routing question for tenant {state['tenant_id']}: {state['question']}")
 
     result = await router_chain.ainvoke({"question": state["question"]})
     decision = result.decision.strip().lower()
 
-    logger.info(f"Router decision: {decision}")
+    goto = {"off_topic": "off_topic", "escalate": "escalate"}.get(decision, "retrieve")
 
-    # We don't update state here — just return the decision
-    # The orchestrator uses this to pick the next edge
-    return {"decision": decision}
+    logger.info(f"Router decision: {decision} → goto: {goto}")
+    return Command(goto=goto, update={"decision": decision})
