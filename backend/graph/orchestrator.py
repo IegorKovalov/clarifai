@@ -66,8 +66,8 @@ async def rewrite_question(state: ClarifAIState) -> dict:
     )
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Rewrite the customer question to be clearer and more likely to match relevant documents. Keep the same intent but use different wording."),
-        ("human", "Original question: {question}\n\nRewrite it:")
+        ("system", "Rewrite the customer question to be clearer and more likely to match relevant documents. Keep the same intent but use different wording. Reply with ONLY the rewritten question — no explanations, no formatting, no quotes, no markdown."),
+        ("human", "{question}")
     ])
 
     chain = prompt | llm

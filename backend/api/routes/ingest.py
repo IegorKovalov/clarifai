@@ -4,11 +4,12 @@ from pathlib import Path
 
 import pypdf
 import docx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.dependencies import get_tenant
 from db.database import get_db
-from db.models import Document
+from db.models import Document, Tenant
 from db.vector_store import chunk_and_store, extract_text_from_url
 from schemas.pydantic_models import DocumentResponse, IngestResponse, URLIngestRequest
 
@@ -39,14 +40,15 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 
 @router.post("/file", response_model=IngestResponse)
 async def ingest_file(
-    tenant_id: uuid.UUID = Form(...),
     file: UploadFile = File(...),
+    tenant: Tenant = Depends(get_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Upload a PDF or Word document for a tenant.
-    Extracts text, chunks it, embeds it, and stores in the DB.
+    Auth: X-API-Key header required.
     """
+    tenant_id = tenant.id
     logger.info(f"File upload received: {file.filename} for tenant {tenant_id}")
 
     # Validate file type
@@ -98,24 +100,23 @@ async def ingest_file(
 @router.post("/url", response_model=IngestResponse)
 async def ingest_url(
     request: URLIngestRequest,
+    tenant: Tenant = Depends(get_tenant),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Ingest a URL for a tenant.
-    Fetches the page, extracts text, chunks, embeds, and stores.
+    Auth: X-API-Key header required.
     """
-    logger.info(f"URL ingestion received: {request.url} for tenant {request.tenant_id}")
+    logger.info(f"URL ingestion received: {request.url} for tenant {tenant.id}")
 
-    # Fetch and extract text from URL
     raw_text = await extract_text_from_url(str(request.url))
 
     if not raw_text.strip():
         raise HTTPException(status_code=400, detail="Could not extract text from URL")
 
-    # Use URL as filename
     document = Document(
         id=uuid.uuid4(),
-        tenant_id=request.tenant_id,
+        tenant_id=tenant.id,
         filename=str(request.url),
         file_type="url",
         status="processing",

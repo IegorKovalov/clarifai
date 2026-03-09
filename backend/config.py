@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
 
     
+    # Admin secret — required to create tenants (set in .env)
+    admin_secret: str
+
     # LangSmith (for Phase 3, defined now so it's ready)
     langchain_api_key: str = ""
     langchain_tracing_v2: str = "false"

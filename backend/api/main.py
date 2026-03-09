@@ -1,9 +1,8 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import ingest
+from api.routes import admin, chat, ingest, tenants
 
-# Configure logging — this makes all our logger.info() calls actually print
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -12,10 +11,9 @@ logging.basicConfig(
 app = FastAPI(
     title="ClarifAI",
     description="Multi-tenant AI customer support platform",
-    version="0.1.0",
+    version="0.2.0",
 )
 
-# CORS — allows the React frontend to talk to this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -24,11 +22,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register the ingestion router
+app.include_router(tenants.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/health")
 async def health_check():
-    """Simple endpoint to confirm the server is running."""
     return {"status": "ok", "service": "ClarifAI"}
