@@ -2,7 +2,6 @@ import logging
 import uuid
 from typing import Optional
 import httpx
-from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AsyncOpenAI
 from sqlalchemy import text
@@ -109,23 +108,23 @@ async def search_similar(
 
 
 async def extract_text_from_url(url: str) -> str:
-    """Fetch a URL and extract clean text from the HTML."""
-    logger.info(f"Fetching URL: {url}")
+    """
+    Fetch a URL and return clean text via Jina.ai Reader.
+    Handles both static HTML and JavaScript-rendered pages,
+    and bypasses bot protection that blocks raw HTTP scrapers.
+    """
+    jina_url = f"https://r.jina.ai/{url}"
+    logger.info(f"Fetching via Jina Reader: {url}")
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            str(url),
+            jina_url,
+            headers={"Accept": "text/plain"},
             follow_redirects=True,
-            timeout=30,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; ClarifAI/1.0)"}
+            timeout=60,
         )
         response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "lxml")
-
-    # Remove script and style tags — we only want readable text
-    for tag in soup(["script", "style", "nav", "footer", "header"]):
-        tag.decompose()
-
-    text = soup.get_text(separator="\n", strip=True)
+    text = response.text
     logger.info(f"Extracted {len(text)} characters from URL")
     return text
