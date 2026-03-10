@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 # Structured output schema — Literal constraint ensures only valid values are returned
 class RouteDecision(BaseModel):
-    decision: Literal["vectorstore", "escalate", "off_topic"] = Field(
-        description="Route the question to one of: 'vectorstore', 'escalate', 'off_topic'"
+    decision: Literal["vectorstore", "escalate", "off_topic", "chitchat"] = Field(
+        description="Route the question to one of: 'vectorstore', 'escalate', 'off_topic', 'chitchat'"
     )
 
 # Claude model — we use claude-3-5-haiku for speed and cost on routing
@@ -29,31 +29,35 @@ structured_llm = llm.with_structured_output(RouteDecision)
 router_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a router for a customer support AI system.
 
-Your job is to classify the customer's question into exactly one of three categories:
+Your job is to classify the customer's message into exactly one of four categories:
 
-- 'vectorstore': Use this for any question about business, finance, entrepreneurship, products, 
-  services, policies, or any topic a company's knowledge base might plausibly cover. Also use 
-  this for vague or follow-up questions like "tell me more" or "can you explain?". 
-  When in doubt, default to this.
+- 'chitchat': Use this for greetings, small talk, introductions, expressions of gratitude, 
+  or any message that is conversational rather than a specific question. 
+  Examples: "Hi", "Hey", "Hello", "Thanks!", "What can you do?", "Who are you?", 
+  "Can you help me?", "Nice to meet you", "Goodbye", "How are you?".
+
+- 'vectorstore': Use this for specific questions about products, services, policies, billing, 
+  accounts, technical issues, or any topic the company's knowledge base might cover. 
+  Also use for vague follow-up questions like "tell me more" or "can you explain?".
+  When in doubt between chitchat and vectorstore, prefer vectorstore.
 
 - 'escalate': Use this ONLY when the customer explicitly asks for a human/agent, makes a legal 
   threat, or expresses urgent distress. Examples: "I want to speak to a human", 
   "I'm going to sue you", "get me a manager".
 
 - 'off_topic': Use this ONLY for questions with ZERO possible business relevance — pure 
-  geography facts, weather, sports scores, entertainment trivia, or science unrelated to any 
-  business topic. Examples: "What is the capital of France?", "Who won the World Cup?", 
-  "What is the boiling point of water?".
+  geography facts, weather, sports scores, entertainment trivia. 
+  Examples: "What is the capital of France?", "Who won the World Cup?".
 
 Respond with only the decision field filled in."""),
-    ("human", "Customer question: {question}")
+    ("human", "Customer message: {question}")
 ])
 
 # Chain: prompt → Claude → structured output
 router_chain = router_prompt | structured_llm
 
 
-async def route_question(state: ClarifAIState) -> Command[Literal["retrieve", "escalate", "off_topic"]]:
+async def route_question(state: ClarifAIState) -> Command[Literal["retrieve", "escalate", "off_topic", "chitchat"]]:
     """
     Node function — uses Command to directly specify the next node,
     bypassing the need to store the decision in state.
@@ -63,7 +67,7 @@ async def route_question(state: ClarifAIState) -> Command[Literal["retrieve", "e
     result = await router_chain.ainvoke({"question": state["question"]})
     decision = result.decision.strip().lower()
 
-    goto = {"off_topic": "off_topic", "escalate": "escalate"}.get(decision, "retrieve")
+    goto = {"off_topic": "off_topic", "escalate": "escalate", "chitchat": "chitchat"}.get(decision, "retrieve")
 
     logger.info(f"Router decision: {decision} → goto: {goto}")
     return Command(goto=goto, update={"decision": decision})

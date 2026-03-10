@@ -46,11 +46,54 @@ def grade_answer_decision(state: ClarifAIState) -> str:
 # --- Off-topic handler ---
 
 async def handle_off_topic(state: ClarifAIState) -> dict:
-    """Returns a polite message for off-topic questions."""
-    message = "I'm here to help with questions about our products and services. Could you ask me something related to that?"
+    """Returns a polite redirect for genuinely off-topic questions."""
+    message = "That's a bit outside my area — I'm here to help with questions about our products and services. What can I help you with?"
     messages = state.get("messages", [])
     messages.append({"role": "assistant", "content": message})
     return {"generation": message, "messages": messages}
+
+
+# --- Chitchat handler ---
+
+async def handle_chitchat(state: ClarifAIState) -> dict:
+    """Responds naturally to greetings and conversational messages using Claude."""
+    from langchain_anthropic import ChatAnthropic
+    from langchain_core.prompts import ChatPromptTemplate
+
+    llm = ChatAnthropic(
+        model="claude-haiku-4-5-20251001",
+        api_key=settings.anthropic_api_key,
+        temperature=0.7,
+        streaming=True,
+    )
+
+    history = state.get("messages", [])
+    history_text = ""
+    for m in history[:-1]:  # exclude the current message
+        role = "Customer" if m["role"] == "user" else "Assistant"
+        history_text += f"{role}: {m['content']}\n"
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a friendly, warm customer support assistant. 
+Respond naturally and conversationally to greetings and small talk.
+Keep replies short (1-3 sentences). Be genuine, not robotic.
+You can briefly mention that you're here to help with questions about products and services,
+but don't be pushy about it. Just be a pleasant, helpful presence.
+
+{history}"""),
+        ("human", "{message}")
+    ])
+
+    chain = prompt | llm
+    result = await chain.ainvoke({
+        "history": f"Previous conversation:\n{history_text}" if history_text else "",
+        "message": state["question"],
+    })
+
+    message = result.content
+    messages = state.get("messages", [])
+    messages.append({"role": "assistant", "content": message})
+    return {"generation": message, "messages": messages, "confidence_score": 1.0}
 
 
 # --- Rewrite question node ---
@@ -97,6 +140,7 @@ def build_graph() -> StateGraph:
     graph.add_node("grade_answer", grade_answer)
     graph.add_node("escalate", escalate)
     graph.add_node("off_topic", handle_off_topic)
+    graph.add_node("chitchat", handle_chitchat)
 
     # Entry point
     graph.set_entry_point("router")
@@ -130,6 +174,7 @@ def build_graph() -> StateGraph:
     # Terminal nodes
     graph.add_edge("escalate", END)
     graph.add_edge("off_topic", END)
+    graph.add_edge("chitchat", END)
 
     return graph.compile()
 

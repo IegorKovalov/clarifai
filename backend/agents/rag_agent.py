@@ -9,9 +9,10 @@ from graph.state import ClarifAIState
 logger = logging.getLogger(__name__)
 
 llm = ChatAnthropic(
-    model="claude-sonnet-4-6",  # Sonnet for generation — better quality
+    model="claude-sonnet-4-6",
     api_key=settings.anthropic_api_key,
-    temperature=0.3,  # slight creativity for natural answers
+    temperature=0.3,
+    streaming=True,
 )
 
 generate_prompt = ChatPromptTemplate.from_messages([

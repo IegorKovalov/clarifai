@@ -15,4 +15,6 @@ class ClarifAIState(TypedDict):
     escalated: bool         # whether this conversation was escalated
     rewrite_count: int      # how many times we've rewritten the question (max 2)
     confidence_score: float # how confident Claude is in the answer (0.0 - 1.0)
-    feedback: Optional[str] # 👍👎 from the customer after the conversation
+    feedback: Optional[str]          # 👍👎 from the customer after the conversation
+    decision: str                    # router decision: 'vectorstore', 'escalate', 'off_topic', 'chitchat'
+    escalation_email: Optional[str]  # tenant's escalation email — set at graph entry

@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def _build_initial_state(tenant_id: str, message: str, history: list) -> dict:
+def _build_initial_state(
+    tenant_id: str, message: str, history: list, escalation_email: str | None = None
+) -> dict:
     return {
         "messages": history + [{"role": "user", "content": message}],
         "tenant_id": tenant_id,
@@ -30,6 +32,7 @@ def _build_initial_state(tenant_id: str, message: str, history: list) -> dict:
         "confidence_score": 0.0,
         "feedback": None,
         "decision": "vectorstore",
+        "escalation_email": escalation_email,
     }
 
 
@@ -42,7 +45,9 @@ async def chat(
     """REST chat — blocks until the full answer is ready."""
     session_id = request.session_id or str(uuid.uuid4())
     memory = await load_conversation(db, session_id, str(tenant.id))
-    initial_state = _build_initial_state(str(tenant.id), request.message, memory["messages"])
+    initial_state = _build_initial_state(
+        str(tenant.id), request.message, memory["messages"], tenant.escalation_email
+    )
 
     result = await clarifai_graph.ainvoke(initial_state)
     await save_conversation(db, session_id, str(tenant.id), result)
@@ -99,16 +104,20 @@ async def chat_ws(
 
                 memory = await load_conversation(db, session_id, str(tenant.id))
                 initial_state = _build_initial_state(
-                    str(tenant.id), message, memory["messages"]
+                    str(tenant.id), message, memory["messages"], tenant.escalation_email
                 )
 
-                final_state = {}
+                final_state: dict = {}
+
+                STREAMING_NODES = {"generate", "chitchat"}
 
                 async for event in clarifai_graph.astream_events(initial_state, version="v2"):
-                    # Stream tokens from the generate node only
+                    node = event.get("metadata", {}).get("langgraph_node", "")
+
+                    # Stream tokens from generating nodes
                     if (
                         event["event"] == "on_chat_model_stream"
-                        and event.get("metadata", {}).get("langgraph_node") == "generate"
+                        and node in STREAMING_NODES
                     ):
                         chunk = event["data"]["chunk"]
                         if chunk.content:
@@ -117,9 +126,11 @@ async def chat_ws(
                                 "content": chunk.content,
                             })
 
-                    # Capture final graph output
-                    elif event["event"] == "on_chain_end" and event["name"] == "LangGraph":
-                        final_state = event["data"].get("output", {})
+                    # LangGraph fires this last, after all tokens — full state available
+                    elif event["event"] == "on_chain_end" and event.get("name") == "LangGraph":
+                        output = event["data"].get("output", {})
+                        if isinstance(output, dict):
+                            final_state = output
 
                 if final_state:
                     await save_conversation(db, session_id, str(tenant.id), final_state)
@@ -129,6 +140,8 @@ async def chat_ws(
                     "confidence": final_state.get("confidence_score", 0.0),
                     "escalated": final_state.get("escalated", False),
                     "session_id": session_id,
+                    "generation": final_state.get("generation", ""),
+                    "decision": final_state.get("decision", "vectorstore"),
                 })
 
         except WebSocketDisconnect:
